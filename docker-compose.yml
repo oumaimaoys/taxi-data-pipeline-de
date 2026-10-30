@@ -1,4 +1,5 @@
 services:
+
   airflow:
     image: apache/airflow:3.1.7
     command: standalone
@@ -25,3 +26,32 @@ services:
     volumes:
       - ./object-storage:/data
     restart: unless-stopped
+
+  spark:
+    build:
+      context: .
+      dockerfile: spark/Dockerfile
+    depends_on:
+      object-storage:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      RUSTFS_USERNAME: ${RUSTFS_USERNAME}
+      RUSTFS_PASSWORD: ${RUSTFS_PASSWORD}
+      BUCKET_NAME: ${BUCKET_NAME}
+      BRONZE_OBJECT_KEY: ${BRONZE_OBJECT_KEY}
+      S3_ENDPOINT: http://object-storage:9000
+      S3_HOST: object-storage
+      S3_PORT: "9000"
+      RAW_DATA_PATH: /app/data/raw_data/chicago_taxi_trips_2020_2021.csv
+      SPARK_LOCAL_IP: 127.0.0.1
+      PYSPARK_PYTHON: python3
+    volumes:
+      - ./spark/src:/app/src
+      - ./data:/app/data
+    working_dir: /app
+    restart: "no"
+
+volumes:
+  rustfs_data:

@@ -1,4 +1,6 @@
 RUSTFS_USERNAME=taxiadmin
 RUSTFS_PASSWORD=taxiadmin
-
-
+BUCKET_NAME=chicago-taxi-datalake
+BRONZE_OBJECT_KEY=bronze/chicago_taxi/trips_2020_2021.csv
+S3_ENDPOINT=http://localhost:9000
+RAW_DATA_PATH=data/raw_data/chicago_taxi_trips_2020_2021.csv
