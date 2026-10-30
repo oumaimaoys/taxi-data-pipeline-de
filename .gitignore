@@ -1,2 +1,5 @@
 .env
 notes.md
+venv
+data/
+object-storage

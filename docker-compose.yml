@@ -1,0 +1,27 @@
+services:
+  airflow:
+    image: apache/airflow:3.1.7
+    command: standalone
+    ports:
+      - "8081:8081"
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./data:/opt/airflow/data
+    restart: unless-stopped
+
+  object-storage:
+    image: rustfs/rustfs:latest
+    command: ["/data", "--console-enable"]
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      RUSTFS_ACCESS_KEY: taxiadmin
+      RUSTFS_SECRET_KEY: taxi-local-secret-change-me
+    volumes:
+      - ./object-storage:/data
+    restart: unless-stopped
