@@ -20,8 +20,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      RUSTFS_ACCESS_KEY: taxiadmin
-      RUSTFS_SECRET_KEY: taxi-local-secret-change-me
+      RUSTFS_ACCESS_KEY: ${RUSTFS_USERNAME}
+      RUSTFS_SECRET_KEY: ${RUSTFS_PASSWORD}
     volumes:
       - ./object-storage:/data
     restart: unless-stopped
