@@ -16,7 +16,40 @@ flowchart TD
     gold --> exposure["Couche d’exposition<br/>fichiers Parquet / SQL / dashboard"]
 ```
 
-Airflow déclenche les étapes dans cet ordre : ingestion Bronze, transformation Silver, puis agrégations Gold.
+Airflow exécute le pipeline une fois par jour et déclenche les étapes dans cet ordre : ingestion Bronze, transformation Silver, puis agrégations Gold.
+
+## Architecture des conteneurs
+
+```mermaid
+flowchart TB
+    subgraph compose["Docker Compose : taxipipeline"]
+        direction TB
+        init["airflow-init"]
+        api["airflow-apiserver"]
+        scheduler["airflow-scheduler"]
+        processor["airflow-dag-processor"]
+        db[("airflow-db<br/>PostgreSQL")]
+        spark["spark<br/>Python / PySpark"]
+        rustfs["object-storage<br/>RustFS"]
+        db_volume[("airflow_db_data")]
+        rustfs_volume[("rustfs_data")]
+
+        init -->|"migration"| db
+        api --> db
+        scheduler --> db
+        processor --> db
+        scheduler -->|"docker exec via<br/>/var/run/docker.sock"| spark
+        spark <-->|"boto3 / S3A"| rustfs
+        db --- db_volume
+        rustfs --- rustfs_volume
+    end
+
+    browser["Navigateur"] -->|"HTTP :8082"| api
+    soda["API SODA Chicago"] -->|"HTTPS / CSV"| spark
+    browser -->|"S3 :9000<br/>Console :9001"| rustfs
+```
+
+Les services du diagramme communiquent sur le réseau interne Docker ; seuls Airflow et RustFS publient des ports vers la machine hôte.
 
 ## Données : choix d’un trimestre
 
@@ -65,7 +98,7 @@ Lorsque `airflow-init` est terminé :
 
 1. Ouvrez Airflow sur [http://localhost:8082](http://localhost:8082).
 2. Connectez-vous avec `AIRFLOW_ADMIN_USER` et `AIRFLOW_ADMIN_PASSWORD` définis dans `.env`.
-3. Déclenchez le DAG `chicago_taxi_pipeline` manuellement.
+3. Le DAG `chicago_taxi_pipeline` s’exécute automatiquement une fois par jour ; vous pouvez aussi le déclencher manuellement pour lancer une première exécution immédiatement.
 4. Consultez les données produites dans la console RustFS.
 
 Le premier traitement télécharge déjà le CSV : aucun fichier source n’est à préparer manuellement. Lancez Compose depuis la racine du projet sans changer son nom (`-p`), car le DAG référence actuellement le conteneur Spark `taxipipeline-spark-1`.

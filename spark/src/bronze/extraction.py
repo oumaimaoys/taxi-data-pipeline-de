@@ -100,7 +100,7 @@ def main():
 
     api_url = os.getenv("API_URL", "https://data.cityofchicago.org/resource/wrvz-psew.csv")
     start_date = os.getenv("START_DATE", "2023-01-01T00:00:00")
-    end_date = os.getenv("END_DATE", "2023-01-02T00:00:00")
+    end_date = os.getenv("END_DATE", "2023-02-01T00:00:00")
     batch_size = int(os.getenv("BATCH_SIZE", "2000"))
     max_retries = int(os.getenv("MAX_RETRIES", "5"))
 

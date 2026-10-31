@@ -31,7 +31,7 @@ with DAG(
     default_args=default_args,
     description="Chicago Taxi data pipeline",
     start_date=datetime(2026, 10, 31),
-    schedule=None,  # Manual execution for now
+    schedule="@daily",
     catchup=False,
     tags=["chicago-taxi", "data-engineering"],
 ) as dag:
