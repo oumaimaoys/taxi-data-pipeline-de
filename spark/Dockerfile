@@ -46,4 +46,4 @@ COPY spark/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python3", "src/silver/bronze_to_silver.py"]
+

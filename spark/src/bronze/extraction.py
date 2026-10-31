@@ -9,12 +9,12 @@ dotenv.load_dotenv()
 
 S3_ENDPOINT = os.getenv("S3_ENDPOINT", "http://localhost:9000")
 BUCKET = os.getenv("BUCKET_NAME")
-object_key = os.getenv("BRONZE_OBJECT_KEY")
-file_path = os.getenv("RAW_DATA_PATH")
+OBJECT_KEY = os.getenv("BRONZE_OBJECT_KEY")
+FILE_PATH = os.getenv("RAW_DATA_PATH")
 
 if not BUCKET:
     raise SystemExit("BUCKET_NAME is not set")
-if not object_key:
+if not OBJECT_KEY:
     raise SystemExit("BRONZE_OBJECT_KEY is not set")
 
 s3 = boto3.client(
@@ -30,7 +30,7 @@ if BUCKET not in existing_buckets:
     s3.create_bucket(Bucket=BUCKET)
 
 try:
-    s3.upload_file(file_path, BUCKET, object_key)
+    s3.upload_file(FILE_PATH, BUCKET, OBJECT_KEY)
     logging.info("Upload successful!")
 except (ClientError, BotoCoreError, OSError) as e:
     logging.error("Upload failed: %s", e)
