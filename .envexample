@@ -1,9 +1,12 @@
 RUSTFS_USERNAME=taxiadmin
 RUSTFS_PASSWORD=taxiadmin
 BUCKET_NAME=chicago-taxi-datalake
-BRONZE_OBJECT_KEY=bronze/chicago_taxi/trips_2020_2021.csv
+BRONZE_OBJECT_KEY=bronze/chicago_taxi/trips.csv
 SILVER_OBJECT_KEY=silver/taxi_data/
 GOLD_OBJECT_KEY=gold/taxi_data/
 S3_ENDPOINT=http://object-storage:9000
-RAW_DATA_PATH=/opt/airflow/data/raw_data/chicago_taxi_trips_2020_2021.csv
+RAW_DATA_PATH=/opt/airflow/data/raw_data/chicago_taxi_trips.csv
 
+AIRFLOW_ADMIN_USER=admin
+AIRFLOW_ADMIN_PASSWORD=admin
+AIRFLOW_JWT_SECRET=<openssl rand -hex 32>

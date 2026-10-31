@@ -3,10 +3,11 @@ import io
 import logging
 import os
 import time
-
 import boto3
 import dotenv
 import requests
+from botocore.exceptions import ClientError
+
 
 logger = logging.getLogger(__name__)
 
@@ -71,15 +72,17 @@ def upload_to_bucket(s3_endpoint, access_key, secret_key, bucket, object_key, fi
         region_name="us-east-1",
     )
 
-    existing = [b["Name"] for b in s3.list_buckets().get("Buckets", [])]
-    if bucket not in existing:
-        logger.info("Creating bucket %s", bucket)
+    try:
         s3.create_bucket(Bucket=bucket)
+        logger.info("Created bucket %s", bucket)
+    except ClientError as e:
+        if e.response["Error"]["Code"] not in ("BucketAlreadyOwnedByYou", "BucketAlreadyExists"):
+            raise
+        logger.info("Bucket %s already exists", bucket)
 
     logger.info("Uploading %s bytes to s3://%s/%s", os.path.getsize(file_path), bucket, object_key)
     s3.upload_file(file_path, bucket, object_key)
     logger.info("Upload completed successfully")
-
 
 def main():
     logging.basicConfig(
@@ -97,7 +100,7 @@ def main():
 
     api_url = os.getenv("API_URL", "https://data.cityofchicago.org/resource/wrvz-psew.csv")
     start_date = os.getenv("START_DATE", "2023-01-01T00:00:00")
-    end_date = os.getenv("END_DATE", "2024-01-01T00:00:00")
+    end_date = os.getenv("END_DATE", "2023-01-02T00:00:00")
     batch_size = int(os.getenv("BATCH_SIZE", "2000"))
     max_retries = int(os.getenv("MAX_RETRIES", "5"))
 

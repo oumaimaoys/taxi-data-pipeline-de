@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import abs as spark_abs
-from pyspark.sql.functions import coalesce, col, lit, month, sum, year
+from pyspark.sql.functions import coalesce, col, lit, month, sum, year, try_to_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,6 @@ HADOOP_AWS_PACKAGES = ",".join(
     [
         "org.apache.hadoop:hadoop-aws:3.5.0",
         "software.amazon.awssdk:bundle:2.35.4",
-        "software.amazon.s3.analyticsaccelerator:analyticsaccelerator-s3:1.3.1",
     ]
 )
 
@@ -70,8 +69,7 @@ def main():
             .config("spark.hadoop.fs.s3a.secret.key", secret_key)
             .config("spark.hadoop.fs.s3a.path.style.access", "true")
             .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-            .config("spark.hadoop.fs.s3a.analytics.accelerator.enabled", "false")
-            .config("spark.hadoop.fs.s3a.prefetch.enabled", "false")
+            .config("spark.hadoop.fs.s3a.input.stream.type", "classic")
             .config(
                 "spark.hadoop.fs.s3a.aws.credentials.provider",
                 "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
@@ -79,11 +77,49 @@ def main():
             .getOrCreate()
         )
 
-        source_schema = "trip_id STRING, taxi_id STRING, trip_start_timestamp TIMESTAMP, trip_end_timestamp TIMESTAMP, trip_seconds INT, trip_miles DOUBLE, pickup_census_tract STRING, dropoff_census_tract STRING, pickup_community_area INT, dropoff_community_area INT, fare DOUBLE, tips DOUBLE, tolls DOUBLE, extras DOUBLE, trip_total DOUBLE, payment_type STRING, company STRING, pickup_centroid_latitude DOUBLE, pickup_centroid_longitude DOUBLE, pickup_centroid_location STRING, dropoff_centroid_latitude DOUBLE, dropoff_centroid_longitude DOUBLE, dropoff_centroid_location STRING"
         logger.info("Reading Bronze CSV and applying the source schema")
-        bronze_df = spark.read.csv(
-            f"s3a://{bucket}/{object_key}", header=True, schema=source_schema
+        SOURCE_COLUMNS = {
+            "trip_id": "string",
+            "taxi_id": "string",
+            "trip_start_timestamp": "timestamp",
+            "trip_end_timestamp": "timestamp",
+            "trip_seconds": "int",
+            "trip_miles": "double",
+            "pickup_census_tract": "string",
+            "dropoff_census_tract": "string",
+            "pickup_community_area": "int",
+            "dropoff_community_area": "int",
+            "fare": "double",
+            "tips": "double",
+            "tolls": "double",
+            "extras": "double",
+            "trip_total": "double",
+            "payment_type": "string",
+            "company": "string",
+            "pickup_centroid_latitude": "double",
+            "pickup_centroid_longitude": "double",
+            "pickup_centroid_location": "string",
+            "dropoff_centroid_latitude": "double",
+            "dropoff_centroid_longitude": "double",
+            "dropoff_centroid_location": "string",
+        }
+
+
+        def cast_column(name, dtype):
+            c = col(name)
+            if dtype == "string":
+                return c.alias(name)
+            if dtype == "timestamp":
+                return try_to_timestamp(c).alias(name)
+            return c.try_cast(dtype).alias(name)
+
+
+        raw_df = spark.read.csv(f"s3a://{bucket}/{object_key}", header=True) 
+
+        bronze_df = raw_df.select(
+            [cast_column(name, dtype) for name, dtype in SOURCE_COLUMNS.items()]
         )
+
         records_before = bronze_df.count()
         logger.info("Loaded %s Bronze records", records_before)
 

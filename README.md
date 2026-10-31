@@ -5,50 +5,29 @@ Ce dépôt met en place un pipeline local de traitement des trajets de taxis de 
 ## Architecture
 
 ```mermaid
-flowchart LR
-	API[API publique de Chicago] -->|CSV| RAW[CSV brut dans data/raw_data]
-	RAW -->|boto3| BRONZE[RustFS : bronze]
-	BRONZE -->|Spark| SILVER[RustFS : silver, Parquet partitionné]
-	SILVER -->|Spark| GOLD[RustFS : gold, agrégats Parquet]
-	AIRFLOW[Airflow : orchestration manuelle] --> INGEST[Chargement Bronze]
-	AIRFLOW --> CLEAN[Nettoyage Silver]
-	AIRFLOW --> AGG[Calcul Gold]
-	INGEST --> CLEAN --> AGG
-	INGEST -. exécute dans .-> SPARK[Conteneur Spark]
-	CLEAN -. exécute dans .-> SPARK
-	AGG -. exécute dans .-> SPARK
+
 ```
 
 Les services et leurs ports sont définis dans [docker-compose.yml](docker-compose.yml) :
 
 | Service | Rôle | Adresse locale |
 |---|---|---|
-| Airflow | Interface et orchestration du DAG | [http://localhost:8081](http://localhost:8081) |
+| Airflow | Interface et orchestration du DAG | [http://localhost:8082](http://localhost:8082) |
 | RustFS | API de stockage S3 | [http://localhost:9000](http://localhost:9000) |
 | RustFS Console | Interface d’administration du stockage | [http://localhost:9001](http://localhost:9001) |
 | Spark | Environnement Python, Java et PySpark utilisé par les tâches | Pas de port publié |
 
-Airflow utilise le socket Docker de l’hôte et lance les scripts dans le conteneur Spark déjà démarré. Le stockage RustFS est conservé dans `object-storage/`; les DAG, journaux et données brutes sont montés depuis les dossiers correspondants du dépôt.
 
 ## Organisation du dépôt
 
-- [dags/etl_pipeline.py](dags/etl_pipeline.py) : DAG Airflow `chicago_taxi_pipeline` et dépendances entre tâches.
-- [scripts/load_raw_data.py](scripts/load_raw_data.py) : téléchargement paginé du CSV depuis l’API de Chicago.
-- [spark/src/bronze/extraction.py](spark/src/bronze/extraction.py) : création du bucket si nécessaire et chargement du CSV dans Bronze.
-- [spark/src/silver/bronze_to_silver.py](spark/src/silver/bronze_to_silver.py) : déduplication, contrôles qualité, nettoyage et écriture Parquet dans Silver.
-- [spark/src/gold/silver_to_gold.py](spark/src/gold/silver_to_gold.py) : calcul des jeux de données analytiques Gold.
-- [spark/Dockerfile](spark/Dockerfile) et [spark/entrypoint.sh](spark/entrypoint.sh) : construction de l’image Spark et attente de disponibilité de RustFS.
-- [airflow/Dockerfile](airflow/Dockerfile) : image Airflow avec le client Docker nécessaire aux tâches.
-- [notebooks/data_exploration.ipynb](notebooks/data_exploration.ipynb) : exploration et nettoyage exploratoire du CSV avec PySpark.
-- [.envexample](.envexample) : modèle de configuration des variables d’environnement.
 
 ## Prérequis
 
 - Docker Engine démarré et plugin Docker Compose (`docker compose`).
 - Connexion Internet lors du téléchargement des données et de la construction initiale des images et dépendances.
 - Ressources suffisantes pour exécuter Docker, Java et Spark. Le traitement Silver est configuré avec deux cœurs et environ 2 Gio de mémoire pour le driver et l’exécuteur.
-- Sous Linux, accès au socket Docker (`/var/run/docker.sock`) depuis Airflow et droits d’écriture dans les dossiers montés.
-- Pour exécuter le téléchargeur depuis l’hôte : Python 3 et le paquet `requests`. Celui-ci n’est pas présent dans le [requirements.txt](requirements.txt) utilisé pour l’image Spark.
+
+
 
 ## Configuration
 

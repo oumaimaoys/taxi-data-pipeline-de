@@ -73,17 +73,17 @@ services:
     restart: unless-stopped
 
   object-storage:
-    image: rustfs/rustfs:latest
-    command: ["/data", "--console-enable"]
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      RUSTFS_ACCESS_KEY: ${RUSTFS_USERNAME}
-      RUSTFS_SECRET_KEY: ${RUSTFS_PASSWORD}
-    volumes:
-      - ./object-storage:/data
-    restart: unless-stopped
+      image: rustfs/rustfs:latest
+      command: ["/data", "--console-enable"]
+      ports:
+        - "9000:9000"
+        - "9001:9001"
+      environment:
+        RUSTFS_ACCESS_KEY: ${RUSTFS_USERNAME}
+        RUSTFS_SECRET_KEY: ${RUSTFS_PASSWORD}
+      volumes:
+        - rustfs_data:/data
+      restart: unless-stopped
 
   spark:
     build:
@@ -97,7 +97,7 @@ services:
       S3_ENDPOINT: http://object-storage:9000
       S3_HOST: object-storage
       S3_PORT: "9000"
-      RAW_DATA_PATH: /app/data/raw_data/chicago_taxi_trips_2020_2021.csv
+      RAW_DATA_PATH: /app/data/raw_data/chicago_taxi_trips.csv
       SPARK_LOCAL_IP: 127.0.0.1
       PYSPARK_PYTHON: python3
       SPARK_DRIVER_MEMORY: 2g
@@ -109,3 +109,4 @@ services:
 
 volumes:
   airflow_db_data:
+  rustfs_data:
