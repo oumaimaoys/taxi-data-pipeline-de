@@ -47,6 +47,8 @@ services:
       RAW_DATA_PATH: /app/data/raw_data/chicago_taxi_trips_2020_2021.csv
       SPARK_LOCAL_IP: 127.0.0.1
       PYSPARK_PYTHON: python3
+      SPARK_DRIVER_MEMORY: 2g
+      SPARK_EXECUTOR_MEMORY: 2g
     volumes:
       - ./spark/src:/app/src
       - ./data:/app/data

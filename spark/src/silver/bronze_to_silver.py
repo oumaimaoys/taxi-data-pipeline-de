@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from pyspark.sql import SparkSession
 import json
 from datetime import datetime, timezone
-from pyspark.sql.functions import col, sum, year, month, coalesce, lit
+from pyspark.sql.functions import col, sum, year, month, coalesce, lit, abs as spark_abs
 
 load_dotenv()
 
@@ -13,6 +13,10 @@ OBJECT_KEY = os.getenv("BRONZE_OBJECT_KEY")
 S3_ENDPOINT = os.getenv("S3_ENDPOINT")
 ACCESS_KEY = os.getenv("RUSTFS_USERNAME")
 SECRET_KEY = os.getenv("RUSTFS_PASSWORD")
+
+# Driver heap is applied when the JVM starts; SparkSession.config("spark.driver.memory") is too late.
+os.environ.setdefault("SPARK_DRIVER_MEMORY", "2g")
+os.environ.setdefault("SPARK_EXECUTOR_MEMORY", "2g")
 
 if not BUCKET or not OBJECT_KEY:
     raise SystemExit("BUCKET_NAME and BRONZE_OBJECT_KEY must be set")
@@ -28,9 +32,11 @@ HADOOP_AWS_PACKAGES = ",".join(
 spark = (
     SparkSession.builder
     .appName("Data Cleaning")
-    .master("local[*]")
+    .master("local[2]")
     .config("spark.driver.host", "127.0.0.1")
     .config("spark.driver.bindAddress", "127.0.0.1")
+    .config("spark.sql.shuffle.partitions", "8")
+    .config("spark.sql.files.maxPartitionBytes", "64m")
     .config("spark.jars.packages", HADOOP_AWS_PACKAGES)
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
     .config("spark.hadoop.fs.s3a.endpoint", S3_ENDPOINT)
@@ -39,6 +45,8 @@ spark = (
     .config("spark.hadoop.fs.s3a.secret.key", SECRET_KEY)
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
     .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+    .config("spark.hadoop.fs.s3a.analytics.accelerator.enabled", "false")
+    .config("spark.hadoop.fs.s3a.prefetch.enabled", "false")
     .config(
         "spark.hadoop.fs.s3a.aws.credentials.provider",
         "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
@@ -58,7 +66,9 @@ duplicates_removed = records_before - bronze_df.count()
 
 #  drop columns that are mostly null
 # how many null values are in each column
-null_counts = bronze_df.select([sum(bronze_df[col].isNull().cast("int")).alias(col) for col in bronze_df.columns])
+null_counts = bronze_df.select(
+    [sum(bronze_df[c].isNull().cast("int")).alias(c) for c in bronze_df.columns]
+)
 
 #percentage of null values in each column
 total_rows = bronze_df.count()
@@ -71,9 +81,9 @@ columns_to_drop = [
 ]
 
 null_percentages = {
-    column: round((null_count / records_before) * 100, 2)
-    if records_before > 0 else 0
-    for column, null_count in null_counts.items()
+    column: round((null_count / total_rows) * 100, 2)
+    if total_rows > 0 else 0
+    for column, null_count in null_values.items()
 }
 
 bronze_df = bronze_df.drop(*columns_to_drop)
@@ -111,7 +121,7 @@ bronze_df = bronze_df.filter(
 # check for discrepancies between trip_total and calculated_total
 total_discrepancies = bronze_df.filter(
     col("trip_total").isNotNull() &
-    (abs(col("trip_total") - col("calculated_total")) > 0.01)
+    (spark_abs(col("trip_total") - col("calculated_total")) > 0.01)
 ).count()
 
 # drop unnecessary columns
