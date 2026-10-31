@@ -1,141 +1,124 @@
-# Pipeline de données — trajets de taxis de Chicago
+# Pipeline de données des taxis de Chicago
 
-Ce dépôt met en place un pipeline local de traitement des trajets de taxis de Chicago. Il récupère un fichier CSV depuis l’API publique de la ville, le charge dans un stockage compatible S3 (RustFS), le nettoie et le partitionne avec Apache Spark, puis produit plusieurs agrégats analytiques.
+## Vue d’ensemble
 
-## Architecture
+Ce projet construit localement un pipeline de données sur les trajets de taxis de Chicago. Il extrait les données depuis l’API SODA de Chicago, les transforme avec Spark et les stocke dans RustFS, un stockage objet compatible S3.
+
+Le résultat suit une architecture **Bronze → Silver → Gold** : des données brutes aux tables analytiques prêtes à être consommées.
+
+## Architecture du pipeline
 
 ```mermaid
-
+flowchart TD
+    source[Sources<br/>API SODA] --> bronze["BRONZE · raw<br/>Données brutes, telles que reçues<br/>non modifiées"]
+    bronze -->|"Spark : parsing, typage,<br/>déduplication, nettoyage"| silver["SILVER · cleaned<br/>Données nettoyées et normalisées<br/>qualité contrôlée"]
+    silver -->|"Spark : agrégations métier"| gold["GOLD · curated<br/>Tables analytiques, prêtes<br/>pour la BI"]
+    gold --> exposure["Couche d’exposition<br/>fichiers Parquet / SQL / dashboard"]
 ```
 
-Les services et leurs ports sont définis dans [docker-compose.yml](docker-compose.yml) :
+Airflow déclenche les étapes dans cet ordre : ingestion Bronze, transformation Silver, puis agrégations Gold.
 
-| Service | Rôle | Adresse locale |
-|---|---|---|
-| Airflow | Interface et orchestration du DAG | [http://localhost:8082](http://localhost:8082) |
-| RustFS | API de stockage S3 | [http://localhost:9000](http://localhost:9000) |
-| RustFS Console | Interface d’administration du stockage | [http://localhost:9001](http://localhost:9001) |
-| Spark | Environnement Python, Java et PySpark utilisé par les tâches | Pas de port publié |
+## Données : choix d’un trimestre
+
+La source est le jeu de données des trajets de taxis de Chicago, accessible via l’API SODA. Chaque ligne représente un trajet et contient notamment les dates, distances, durées, montants, zones de prise en charge/dépose, compagnie et moyen de paiement.
+
+Le périmètre retenu est un **trimestre de données** plutôt que l’historique complet. C’est un compromis entre :
+
+- une période suffisamment longue pour analyser les variations entre mois, jours, heures, zones et moyens de paiement ;
+- un volume raisonnable pour Spark et RustFS sur une machine locale ;
+- des temps de téléchargement, de transformation et de débogage qui restent courts pendant le développement.
+
+Un trimestre permet également d’écrire naturellement la couche Silver en partitions mensuelles. En revanche, il ne représente pas toutes les variations saisonnières d’une année entière : ce périmètre pourra être étendu lorsque l’infrastructure le permettra.
+
+La fenêtre d’extraction est configurable avec `START_DATE` et `END_DATE`. Pour extraire le premier trimestre 2023, ajoutez à `.env` :
+
+```dotenv
+START_DATE=2023-01-01T00:00:00
+END_DATE=2023-04-01T00:00:00
+```
+
+Sans ces variables, le script utilise une fenêtre de démonstration du 1er au 2 janvier 2023. `BATCH_SIZE` et `MAX_RETRIES` sont aussi configurables.
 
 
-## Organisation du dépôt
+## Démarrer le projet
 
+### Prérequis
 
-## Prérequis
+- Docker Engine et Docker Compose ;
+- accès Internet pour les images, les dépendances et l’API source ;
+- mémoire suffisante pour Spark.
 
-- Docker Engine démarré et plugin Docker Compose (`docker compose`).
-- Connexion Internet lors du téléchargement des données et de la construction initiale des images et dépendances.
-- Ressources suffisantes pour exécuter Docker, Java et Spark. Le traitement Silver est configuré avec deux cœurs et environ 2 Gio de mémoire pour le driver et l’exécuteur.
-
-
-
-## Configuration
-
-À la racine du dépôt, créez le fichier local `.env` à partir du modèle :
+### Configuration et lancement
 
 ```bash
 cp .envexample .env
+openssl rand -hex 32
 ```
 
-Modifiez ensuite les identifiants RustFS et les chemins selon votre environnement. Ne publiez pas le fichier `.env` et remplacez les identifiants de démonstration avant toute utilisation non locale.
-
-| Variable | Utilisation |
-|---|---|
-| `RUSTFS_USERNAME`, `RUSTFS_PASSWORD` | Identifiants RustFS utilisés par l’API et Spark. |
-| `BUCKET_NAME` | Nom du bucket, actuellement `chicago-taxi-datalake`. |
-| `BRONZE_OBJECT_KEY` | Clé S3 du CSV brut. |
-| `SILVER_OBJECT_KEY` | Préfixe S3 des données Silver. |
-| `GOLD_OBJECT_KEY` | Préfixe Gold prévu dans le modèle; les scripts écrivent actuellement dans des sous-chemins `gold/<nom_du_jeu>/`. |
-| `S3_ENDPOINT` | Adresse de l’API S3 sur le réseau Compose, actuellement `http://object-storage:9000`. |
-| `RAW_DATA_PATH` | Chemin du CSV vu par les conteneurs. Compose le redéfinit pour Spark en `/app/data/raw_data/chicago_taxi_trips_2020_2021.csv`. |
-
-Le dossier local `data/` est monté à `/opt/airflow/data` dans Airflow et à `/app/data` dans Spark. Le CSV doit donc exister dans `data/raw_data/` sur l’hôte avant l’exécution du pipeline.
-
-Sous Linux, si RustFS ne peut pas écrire dans son volume, le dépôt suggère de corriger les permissions du dossier `object-storage/` :
-
-```bash
-sudo chown -R 10001:10001 object-storage
-```
-
-Airflow doit également pouvoir écrire dans `logs/`. En cas de `PermissionError` sur ce volume, vérifiez l’UID de l’utilisateur Airflow de l’image (habituellement `50000`) et ajustez les permissions du dossier monté. La configuration Compose ajoute actuellement le groupe Docker `984`; cette valeur doit correspondre au groupe propriétaire du socket Docker sur votre hôte.
-
-## Construction et démarrage
-
-Depuis la racine du dépôt :
+Copiez la valeur générée dans `AIRFLOW_JWT_SECRET` de `.env`, puis remplacez les identifiants de démonstration avant tout usage non local.
 
 ```bash
 docker compose up -d --build
-docker compose ps
 ```
 
-La première construction de Spark installe Java 17 et les dépendances Python de [requirements.txt](requirements.txt), puis télécharge les bibliothèques Hadoop/S3A configurées dans le Dockerfile. Le service Spark reste actif en attente de commandes. RustFS démarre avec un volume local et Airflow expose son interface sur le port 8081 de l’hôte.
+Lorsque `airflow-init` est terminé :
 
+1. Ouvrez Airflow sur [http://localhost:8082](http://localhost:8082).
+2. Connectez-vous avec `AIRFLOW_ADMIN_USER` et `AIRFLOW_ADMIN_PASSWORD` définis dans `.env`.
+3. Déclenchez le DAG `chicago_taxi_pipeline` manuellement.
+4. Consultez les données produites dans la console RustFS.
 
-## Préparer le CSV brut
+Le premier traitement télécharge déjà le CSV : aucun fichier source n’est à préparer manuellement. Lancez Compose depuis la racine du projet sans changer son nom (`-p`), car le DAG référence actuellement le conteneur Spark `taxipipeline-spark-1`.
 
-Le téléchargeur interroge l’API de Chicago par lots de 2 000 lignes, avec des tentatives répétées en cas d’erreur réseau et une reprise manuelle à l’aide de `LAST_TIMESTAMP`.
-
-Avant de l’exécuter, corrigez les incohérences actuelles décrites dans la section [Points à vérifier](#points-à-vérifier). Installez la dépendance manquante sur l’hôte, puis lancez le script depuis la racine du dépôt :
-
-```bash
-python3 -m pip install requests
-python3 scripts/load_raw_data.py
-```
-
-Le script écrit actuellement sous `data/raw_data/chicago_taxi_trips_2020_2023.csv`, alors que Compose et le DAG attendent `data/raw_data/chicago_taxi_trips_2020_2021.csv`. Le nom produit et les chemins attendus doivent être alignés avant de démarrer le DAG. Si un téléchargement précédent est incomplet, vérifiez le fichier et son horodatage de reprise avant de relancer afin d’éviter d’ajouter des données incorrectes.
-
-## Exécution du pipeline
-
-### Avec Airflow
-
-1. Démarrez les services, puis ouvrez [http://localhost:8081](http://localhost:8081).
-2. Connectez-vous avec les informations créées par Airflow standalone (le mot de passe initial est affiché dans les journaux du conteneur Airflow).
-3. Vérifiez que le fichier attendu est visible dans le volume de données partagé et que la connexion Airflow `fs_default` permet au `FileSensor` de le trouver.
-4. Activez et déclenchez manuellement le DAG `chicago_taxi_pipeline`.
-5. Consultez les journaux de chaque tâche dans Airflow. Le DAG n’a pas de planification périodique (`schedule=None`) et le rattrapage est désactivé.
-
-L’ordre des tâches est :
-
-1. `wait_for_bronze_file` : attend le CSV (jusqu’à une heure, avec vérification toutes les 30 secondes).
-2. `ingest_bronze` : exécute le transfert du CSV vers RustFS.
-3. `create_silver` : nettoie et partitionne les données avec Spark.
-4. `create_gold` : calcule les agrégats analytiques.
-
-
-Chaque étape suppose que la précédente a réussi et que ses données de sortie sont disponibles dans RustFS.
-
-## Traitements et sorties
-
-### Bronze
-
-Le script d’extraction crée le bucket configuré s’il n’existe pas et envoie le fichier local à la clé `BRONZE_OBJECT_KEY`. La clé fournie par le modèle est `bronze/chicago_taxi/trips_2020_2021.csv`.
-
-### Silver
-
-Le traitement applique un schéma explicite au CSV, compte les lignes, supprime les doublons, calcule le taux de valeurs nulles et retire les colonnes dont plus de la moitié des valeurs sont nulles. Il filtre les valeurs négatives de durée, distance et montants, calcule un total de contrôle, compte les écarts entre le total calculé et `trip_total`, puis ajoute des indicateurs de zone et de paiement potentiellement en espèces.
-
-Les données sont écrites en Parquet sous `silver/taxi_data/`, partitionnées par année et mois (`year`, `month`). Les métriques sont écrites sous le préfixe `silver/taxi_data_metrics.json/` au format de sortie Spark (un répertoire contenant des fichiers de part).
-
-### Gold
-
-Le traitement lit Silver et produit les agrégats suivants sous `gold/` :
-
-- `daily_trips` : nombre de trajets, distances et durées moyennes, tarif moyen et revenu quotidien.
-- `popular_pickup_locations` et `popular_dropoff_locations` : activité et revenus par zone.
-- `busy_hours` : activité et revenus par heure de départ.
-- `companies_performance` : activité et revenus par compagnie.
-- `profitable_taxis` : activité et revenus par taxi.
-- `popular_payment_types` : activité et revenus par type de paiement.
-
-Les jeux Gold sont écrits en Parquet et remplacés à chaque exécution (`mode("overwrite")`).
-
-## Arrêt et nettoyage
-
-Pour arrêter les services sans supprimer les données persistées :
+Pour arrêter les services en conservant les données persistantes :
 
 ```bash
 docker compose down
 ```
 
-Les dossiers `object-storage/`, `data/` et `logs/` sont des volumes locaux du dépôt. Ne les supprimez que si vous souhaitez également effacer les données correspondantes.
+## Endpoints
 
+| Service | Endpoint |
+|---|---|
+| Source — API SODA Chicago | `https://data.cityofchicago.org/resource/wrvz-psew.csv` |
+| Airflow | [http://localhost:8082](http://localhost:8082) |
+| RustFS — API S3 | [http://localhost:9000](http://localhost:9000) |
+| RustFS — console | [http://localhost:9001](http://localhost:9001) |
+
+## Structure du dépôt
+
+```text
+.
+├── airflow/                 # Image et démarrage Airflow
+├── dags/etl_pipeline.py     # Orchestration Bronze → Silver → Gold
+├── docker-compose.yml       # Services locaux
+├── notebooks/               # Exploration des données
+├── spark/
+│   └── src/
+│       ├── bronze/          # Extraction depuis l’API et chargement S3
+│       ├── silver/          # Nettoyage et normalisation
+│       └── gold/            # Agrégations analytiques
+├── .envexample              # Modèle de configuration locale
+└── requirements.txt         # Dépendances Python Spark
+```
+
+## Choix de conception
+
+### Pourquoi un seul DAG ?
+
+Les trois étapes sont une chaîne de dépendances directe : Silver dépend de Bronze et Gold dépend de Silver. Un DAG unique permet de déclencher une exécution cohérente pour une même période, de visualiser les dépendances et de centraliser les journaux et les reprises dans Airflow.
+
+Ce choix est adapté au périmètre actuel. Si l’ingestion devait être exécutée à une fréquence différente ou réutilisée par plusieurs pipelines, elle pourrait devenir un DAG séparé.
+
+### Pourquoi RustFS ?
+
+RustFS fournit un stockage objet local compatible S3. `boto3` pour Bronze et Spark S3A pour Silver/Gold utilisent donc le même protocole, les mêmes identifiants et le même lac de données, sans compte cloud ni coût externe. Sa console permet d’inspecter facilement les objets pendant le développement.
+
+## Ce que j’améliorerais avec plus de temps
+
+- Ajouter une vraie stratégie de tests : tests unitaires des transformations, tests d’intégration contre un bucket S3 de test et test de bout en bout du DAG.
+- Remplacer le `docker exec` et le nom de conteneur fixé en dur par un opérateur Airflow ou un service de soumission Spark.
+- Mettre en place une ingestion incrémentale avec un point de reprise, plutôt que de recharger une période complète.
+- Épingler la version de RustFS, ajouter un healthcheck, des secrets gérés, TLS, des droits minimaux et des sauvegardes.
+- Aligner les chemins configurables : `GOLD_OBJECT_KEY` n’est pas encore utilisé par le script Gold.
+- Ajouter métriques, alertes et CI/CD ; faire évoluer ensuite le stockage et le cluster Spark pour un contexte de production.

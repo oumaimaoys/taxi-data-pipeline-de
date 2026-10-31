@@ -29,7 +29,7 @@ default_args = {
 with DAG(
     dag_id="chicago_taxi_pipeline",
     default_args=default_args,
-    description="Chicago Taxi data pipeline: Bronze to Silver to Gold",
+    description="Chicago Taxi data pipeline",
     start_date=datetime(2026, 10, 31),
     schedule=None,  # Manual execution for now
     catchup=False,
