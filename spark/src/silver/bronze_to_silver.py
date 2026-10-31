@@ -1,4 +1,3 @@
-from numbers import Number
 import os
 from dotenv import load_dotenv
 from pyspark.sql import SparkSession
@@ -55,7 +54,7 @@ spark = (
 )
 
 # enforce schema
-source_schema = "trip_id STRING, taxi_id STRING, trip_start_timestamp TIMESTAMP, trip_end_timestamp TIMESTAMP, trip_seconds INT, trip_miles DOUBLE, pickup_census_tract STRING, dropoff_census_tract STRING, pickup_community_area INT, dropoff_community_area INT, fare DOUBLE, tips DOUBLE, tolls DOUBLE, extras DOUBLE, trip_total DOUBLE, payment_type STRING, company STRING, pickup_latitude DOUBLE, pickup_longitude DOUBLE, dropoff_latitude DOUBLE, dropoff_longitude DOUBLE"
+source_schema = "trip_id STRING, taxi_id STRING, trip_start_timestamp TIMESTAMP, trip_end_timestamp TIMESTAMP, trip_seconds INT, trip_miles DOUBLE, pickup_census_tract STRING, dropoff_census_tract STRING, pickup_community_area INT, dropoff_community_area INT, fare DOUBLE, tips DOUBLE, tolls DOUBLE, extras DOUBLE, trip_total DOUBLE, payment_type STRING, company STRING, pickup_centroid_latitude DOUBLE, pickup_centroid_longitude DOUBLE, pickup_centroid_location STRING, dropoff_centroid_latitude DOUBLE, dropoff_centroid_longitude DOUBLE, dropoff_centroid_location STRING"
 bronze_df = spark.read.csv(f"s3a://{BUCKET}/{OBJECT_KEY}", header=True, schema=source_schema)
 records_before = bronze_df.count()
 
