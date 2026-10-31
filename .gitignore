@@ -4,3 +4,4 @@ venv
 data/
 object-storage
 old.csv
+logs/

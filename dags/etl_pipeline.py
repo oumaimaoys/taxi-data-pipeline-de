@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 
 from airflow import DAG
-from airflow.providers.standard.sensors.filesystem import FileSensor
 from airflow.providers.standard.operators.bash import BashOperator
 
 
@@ -36,21 +35,11 @@ with DAG(
     catchup=False,
     tags=["chicago-taxi", "data-engineering"],
 ) as dag:
-
-    # Wait until the Bronze CSV file exists
-    wait_for_data = FileSensor(
-        task_id="wait_for_bronze_file",
-        fs_conn_id="fs_default",
-        filepath="chicago_taxi_trips_2020_2021.csv",
-        poke_interval=30,
-        timeout=60 * 60,
-        mode="reschedule",
-    )
-
+    
     spark_container = "taxipipeline-spark-1"
 
     ingestion_task = BashOperator(
-        task_id="ingest_bronze",
+        task_id="001_bronze_ingestion",
         bash_command=(
             f"docker exec {spark_container} "
             "python3 src/bronze/extraction.py"
@@ -58,7 +47,7 @@ with DAG(
     )
 
     silver_task = BashOperator(
-        task_id="create_silver",
+        task_id="002_silver_transformation",
         bash_command=(
             f"docker exec {spark_container} "
             "python3 src/silver/bronze_to_silver.py"
@@ -66,7 +55,7 @@ with DAG(
     )
 
     gold_task = BashOperator(
-        task_id="create_gold",
+        task_id="003_gold_aggregation",
         bash_command=(
             f"docker exec {spark_container} "
             "python3 src/gold/silver_to_gold.py"
@@ -74,4 +63,4 @@ with DAG(
     )
 
     # Define execution order
-    wait_for_data >> ingestion_task >> silver_task >> gold_task
+    ingestion_task >> silver_task >> gold_task

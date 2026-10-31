@@ -46,4 +46,5 @@ COPY spark/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
+CMD ["python3", "src/load_raw_data.py"]
 
