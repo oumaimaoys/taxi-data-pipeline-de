@@ -70,7 +70,7 @@ START_DATE=2023-01-01T00:00:00
 END_DATE=2023-04-01T00:00:00
 ```
 
-Sans ces variables, le script utilise une fenêtre de démonstration du 1er au 2 janvier 2023. `BATCH_SIZE` et `MAX_RETRIES` sont aussi configurables.
+Sans ces variables, le script utilise une fenêtre de démonstration du 1er Janvier à 1er Avril 2023. `BATCH_SIZE` et `MAX_RETRIES` sont aussi configurables.
 
 
 ## Démarrer le projet
@@ -143,9 +143,31 @@ Les trois étapes sont une chaîne de dépendances directe : Silver dépend de B
 
 Ce choix est adapté au périmètre actuel. Si l’ingestion devait être exécutée à une fréquence différente ou réutilisée par plusieurs pipelines, elle pourrait devenir un DAG séparé.
 
-### Pourquoi RustFS ?
+### Pourquoi RustFS plutôt que MinIO ?
 
-RustFS fournit un stockage objet local compatible S3. `boto3` pour Bronze et Spark S3A pour Silver/Gold utilisent donc le même protocole, les mêmes identifiants et le même lac de données, sans compte cloud ni coût externe. Sa console permet d’inspecter facilement les objets pendant le développement.
+Le besoin est un stockage objet local compatible S3, partagé par `boto3` (Bronze) et Spark S3A (Silver/Gold), sans compte cloud ni coût externe. RustFS et MinIO répondent tous deux à ce besoin avec la même API S3 : le code applicatif est identique, seuls l'image Docker et l'endpoint changent. Le choix s'est donc fait sur d'autres critères.
+
+| Critère | RustFS | MinIO | Verdict |
+|---|---|---|---|
+| Licence | Apache 2.0 (permissive) | AGPLv3 (copyleft fort) | RustFS : aucune contrainte de redistribution |
+| Pérennité de la version communautaire | Développement actif, communauté ouverte | Fonctionnalités retirées de l'édition communautaire, orientation vers l'offre commerciale | RustFS : moins de risque de dépendre d'un produit qui se ferme |
+| Console d'administration | Complète, pratique pour inspecter les objets | Version communautaire amputée de plusieurs fonctions d'administration | RustFS |
+| Maturité et robustesse | Projet récent, moins de retours en production | Très largement éprouvé | **MinIO** |
+| Écosystème et documentation | Plus restreint | Très riche, nombreux guides | **MinIO** |
+| Performances | Non déterminantes pour un pipeline local | Idem | Égalité |
+| Coût de migration | Faible (même API S3) | Faible | Égalité |
+
+#### Arbitrage
+
+**Ce que l'on gagne :** une licence sans contrainte, un projet dont la version libre n'est pas appelée à se réduire, et une console qui remplit son rôle pendant le développement.
+
+**Ce à quoi l'on renonce :** la maturité de MinIO et son écosystème. RustFS étant plus jeune, on accepte un risque de bugs ou de comportements non documentés.
+
+**Pourquoi ce risque est acceptable ici :** le stockage sert uniquement à du développement local. Les données sont reproductibles à partir des sources, il n'y a pas d'exigence de disponibilité, et aucune donnée critique n'y réside.
+
+**Réversibilité :** comme tout passe par l'API S3, revenir à MinIO (ou passer à AWS S3) ne demande que de changer l'endpoint et les identifiants, sans toucher au code des jobs.
+
+**À réévaluer si :** le projet passe en production, si un besoin de support ou de haute disponibilité apparaît, ou si RustFS révèle des instabilités avec Spark S3A.
 
 ## Ce que j’améliorerais avec plus de temps
 
