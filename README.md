@@ -53,7 +53,7 @@ Les services du diagramme communiquent sur le réseau interne Docker ; seuls Air
 
 ## Données : choix d’un trimestre
 
-La source est le jeu de données des trajets de taxis de Chicago, accessible via l’API SODA. Chaque ligne représente un trajet et contient notamment les dates, distances, durées, montants, zones de prise en charge/dépose, compagnie et moyen de paiement.
+La source est le jeu de données des trajets de taxis de Chicago, accessible via l’API SODA.
 
 Le périmètre retenu est un **trimestre de données** plutôt que l’historique complet. C’est un compromis entre :
 
@@ -153,5 +153,4 @@ RustFS fournit un stockage objet local compatible S3. `boto3` pour Bronze et Spa
 - Remplacer le `docker exec` et le nom de conteneur fixé en dur par un opérateur Airflow ou un service de soumission Spark.
 - Mettre en place une ingestion incrémentale avec un point de reprise, plutôt que de recharger une période complète.
 - Épingler la version de RustFS, ajouter un healthcheck, des secrets gérés, TLS, des droits minimaux et des sauvegardes.
-- Aligner les chemins configurables : `GOLD_OBJECT_KEY` n’est pas encore utilisé par le script Gold.
 - Ajouter métriques, alertes et CI/CD ; faire évoluer ensuite le stockage et le cluster Spark pour un contexte de production.
